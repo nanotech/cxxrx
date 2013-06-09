@@ -22,6 +22,11 @@ public:
   const T orDefault(T y) const { return hasValue ? x : y; }
   T& orDefault(T&& y) { return hasValue ? x : y; }
 
+  template <typename ...Args>
+  T* orConstructDefault(Args... args) {
+    return hasValue ? &x : new T(args...);
+  }
+
   template <typename F, typename G>
   auto cond(F f, G g) const -> decltype(f(x)) {
     return hasValue ? f(x) : g();
