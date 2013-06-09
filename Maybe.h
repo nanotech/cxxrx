@@ -14,13 +14,13 @@ public:
   T x;
 
   Maybe() : hasValue(false) {}
+  explicit Maybe(T &&xa) : x(xa), hasValue(true) {}
   explicit Maybe(const T &xa) : x(xa), hasValue(true) {}
   bool isJust() const { return hasValue; }
   bool isNothing() const { return !hasValue; }
 
-  T orDefault(T y) const {
-    return hasValue ? x : y;
-  }
+  const T orDefault(T y) const { return hasValue ? x : y; }
+  T& orDefault(T&& y) { return hasValue ? x : y; }
 
   template <typename F, typename G>
   auto cond(F f, G g) const -> decltype(f(x)) {
@@ -40,3 +40,13 @@ public:
 private:
   bool hasValue;
 };
+
+template <typename M, typename K>
+static auto findMaybe(const M &m, const K &k)
+  -> decltype(Just(m.find(k)->second))
+{
+  auto it = m.find(k);
+  return (it == m.end())
+    ? Nothing<decltype(m.find(k)->second)>()
+    : Just(it->second);
+}
