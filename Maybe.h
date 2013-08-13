@@ -30,6 +30,7 @@ public:
 
   const T orDefault(T y) const { return hasValue ? x : y; }
   T& orDefault(T&& y) { return hasValue ? x : y; }
+  const T* orNull() const { return hasValue ? &x : nullptr; }
   T* orNull() { return hasValue ? &x : nullptr; }
 
   template <typename ...Args>
