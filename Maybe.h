@@ -14,6 +14,9 @@ static Maybe<T> Just(const T &x) { return Maybe<T>(x); }
 template <typename T>
 static Maybe<T> Nothing() { return Maybe<T>(); }
 
+#define JUST_ELSE_NOTHING(P, X) \
+  ((P) ? (X) : Nothing<decltype((X).x)>())
+
 template <typename T>
 class Maybe {
 public:
@@ -41,12 +44,12 @@ public:
 
   template <typename F>
   auto bind(F f) const -> decltype(f(x)) {
-    return hasValue ? f(x) : Nothing<decltype(f(x).x)>();
+    return JUST_ELSE_NOTHING(hasValue, f(x));
   }
 
   template <typename F>
   auto map(F f) const -> Maybe<decltype(f(x))> {
-    return hasValue ? Just(f(x)) : Nothing<decltype(f(x))>();
+    return JUST_ELSE_NOTHING(hasValue, Just(f(x)));
   }
 
 private:
@@ -58,7 +61,5 @@ static auto findMaybe(const M &m, const K &k)
   -> decltype(Just(m.find(k)->second))
 {
   auto it = m.find(k);
-  return (it == m.end())
-    ? Nothing<decltype(m.find(k)->second)>()
-    : Just(it->second);
+  return JUST_ELSE_NOTHING(it != m.end(), Just(it->second));
 }
