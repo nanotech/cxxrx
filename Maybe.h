@@ -1,6 +1,10 @@
 #pragma once
+#include <utility>
 
 template <typename T> class Maybe;
+
+template <typename T>
+static Maybe<T> Just(T &&x) { return Maybe<T>(std::forward<T>(x)); }
 
 template <typename T>
 static Maybe<T> Just(const T &x) { return Maybe<T>(x); }
@@ -14,13 +18,14 @@ public:
   T x;
 
   Maybe() : hasValue(false) {}
-  explicit Maybe(T &&xa) : x(xa), hasValue(true) {}
+  explicit Maybe(T &&xa) : x(std::move(xa)), hasValue(true) {}
   explicit Maybe(const T &xa) : x(xa), hasValue(true) {}
   bool isJust() const { return hasValue; }
   bool isNothing() const { return !hasValue; }
 
   const T orDefault(T y) const { return hasValue ? x : y; }
   T& orDefault(T&& y) { return hasValue ? x : y; }
+  T* orNull() { return hasValue ? &x : nullptr; }
 
   template <typename ...Args>
   T* orConstructDefault(Args... args) {
