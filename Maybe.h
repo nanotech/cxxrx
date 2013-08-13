@@ -1,9 +1,11 @@
 #pragma once
 #include <utility>
+#include <type_traits>
 
 template <typename T> class Maybe;
 
-template <typename T>
+template <typename T, typename std::enable_if<
+  !std::is_reference<T>::value>::type* = nullptr> // rvalues only
 static Maybe<T> Just(T &&x) { return Maybe<T>(std::forward<T>(x)); }
 
 template <typename T>
