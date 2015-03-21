@@ -1,4 +1,5 @@
 #pragma once
+#include <new>
 #include <utility>
 #include <type_traits>
 
@@ -20,11 +21,32 @@ static Maybe<T> Nothing() { return Maybe<T>(); }
 template <typename T>
 class Maybe {
 public:
-  T x;
+  union {
+    T x;
+  };
 
   Maybe() : hasValue(false) {}
   explicit Maybe(T &&xa) : x(std::move(xa)), hasValue(true) {}
   explicit Maybe(const T &xa) : x(xa), hasValue(true) {}
+  Maybe(const Maybe &other) : hasValue(other.hasValue) {
+    if (other.hasValue) new (&x) T(other.x);
+  }
+  Maybe(Maybe &&other) : hasValue(other.hasValue) { moveFrom(other); }
+  void operator=(const Maybe &other) {
+    if (hasValue) x.~T();
+    hasValue = other.hasValue;
+    if (other.hasValue) new (&x) T(other.x);
+  }
+  void operator=(Maybe &&other) {
+    if (hasValue) x.~T();
+    hasValue = other.hasValue;
+    moveFrom(other);
+  }
+  ~Maybe() {
+    if (hasValue) x.~T();
+    hasValue = false;
+  }
+
   bool isJust() const { return hasValue; }
   bool isNothing() const { return !hasValue; }
 
@@ -55,6 +77,13 @@ public:
 
 private:
   bool hasValue;
+  void moveFrom(Maybe &other) {
+    if (other.hasValue) {
+      new (&x) T(std::move(other.x));
+      other.hasValue = false;
+      other.x.~T();
+    }
+  }
 };
 
 template <typename M, typename K>
