@@ -61,17 +61,17 @@ public:
   }
 
   template <typename F, typename G>
-  auto cond(F f, G g) const -> decltype(f(x)) {
+  auto cond(F f, G g) const -> decltype(f(std::declval<T>())) {
     return hasValue ? f(x) : g();
   }
 
   template <typename F>
-  auto bind(F f) const -> decltype(f(x)) {
+  auto bind(F f) const -> decltype(f(std::declval<T>())) {
     return JUST_ELSE_NOTHING(hasValue, f(x));
   }
 
   template <typename F>
-  auto map(F f) const -> Maybe<decltype(f(x))> {
+  auto map(F f) const -> Maybe<decltype(f(std::declval<T>()))> {
     return JUST_ELSE_NOTHING(hasValue, Just(f(x)));
   }
 
