@@ -21,6 +21,7 @@ static Maybe<T> Nothing() { return Maybe<T>(); }
 template <typename T>
 class Maybe {
 public:
+  typedef T value_type;
   union {
     T x;
   };
