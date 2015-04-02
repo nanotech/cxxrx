@@ -87,6 +87,17 @@ private:
   }
 };
 
+template <typename A, typename B>
+constexpr bool operator==(const Maybe<A> &a, const Maybe<B> &b) {
+  return a.isJust() && b.isJust()
+       ? *a.orNull() == *b.orNull()
+       : a.isJust() == b.isJust();
+}
+template <typename A, typename B>
+constexpr bool operator!=(const Maybe<A> &a, const Maybe<B> &b) {
+  return !(a == b);
+}
+
 template <typename M, typename K>
 static auto findMaybe(const M &m, const K &k)
   -> decltype(Just(m.find(k)->second))
