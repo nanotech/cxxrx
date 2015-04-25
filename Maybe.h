@@ -3,6 +3,8 @@
 #include <utility>
 #include <type_traits>
 
+#include "throw.h"
+
 template <typename T> class Maybe;
 
 template <typename T, typename std::enable_if<
@@ -55,6 +57,15 @@ public:
   T& orDefault(T&& y) { return hasValue ? x : y; }
   const T* orNull() const { return hasValue ? &x : nullptr; }
   T* orNull() { return hasValue ? &x : nullptr; }
+
+  template <typename E, typename ...Args>
+  T &orThrow(Args... args) const {
+    if (hasValue) {
+      return x;
+    } else {
+      throw_<E>(std::forward<Args>(args)...);
+    }
+  }
 
   template <typename ...Args>
   T* orConstructDefault(Args... args) {
