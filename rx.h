@@ -161,6 +161,8 @@ template <typename> struct schedule_on;
 
 template <typename T, typename Derived>
 struct observable_methods {
+    using value_type = T;
+
     template <typename F>
     auto map(F &&f) {
         return bind([f](T x){
@@ -268,8 +270,6 @@ private:
 
 template <typename T, typename DoSub>
 struct observable : observable_methods<T, observable<T, DoSub>> {
-    using value_type = T;
-
     DoSub do_subscribe;
 
     observable() : do_subscribe([](auto){}) {}
@@ -381,6 +381,50 @@ struct schedule_on<NSOperationQueue *> {
 };
 #endif
 
+template <typename T, typename Observer>
+struct throttle_observer
+    : observable_methods<T, unit>::template forwarding_observer<Observer> {
+    std::unique_ptr<dispatch_source_t> timerp = std::make_unique<dispatch_source_t>();
+    dispatch_queue_t q;
+    dispatch_time_t interval, leeway;
+    throttle_observer(Observer s_,
+                      dispatch_queue_t q_,
+                      dispatch_time_t i_,
+                      dispatch_time_t l_)
+        : observable_methods<T, unit>::template forwarding_observer<Observer>(s_),
+          q(q_),
+          interval(i_),
+          leeway(l_) {}
+
+    void send_next(T x) const {
+        if (*timerp) {
+            return;
+        }
+        *timerp = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, q);
+        dispatch_source_set_timer(*timerp, dispatch_time(DISPATCH_TIME_NOW, interval),
+                                  DISPATCH_TIME_FOREVER, leeway);
+        dispatch_source_set_event_handler(*timerp, ^{
+          this->s.send_next(x);
+          dispatch_source_cancel(*timerp);
+#if !__has_feature(objc_arc)
+          dispatch_release(*timerp);
+#endif
+          *timerp = (dispatch_source_t)nullptr;
+        });
+        dispatch_resume(*timerp);
+    }
+};
+
+template <typename Observable>
+auto throttle(const Observable &o,
+              dispatch_queue_t q,
+              dispatch_time_t interval,
+              dispatch_time_t leeway) {
+    using T = typename Observable::value_type;
+    return make_observable<T>([=](auto s){
+        o.subscribe(throttle_observer<T, decltype(s)>{s, q, interval, leeway});
+    });
+}
 
 }
 }
