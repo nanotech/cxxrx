@@ -4,6 +4,7 @@
 #include <memory>
 #include <utility>
 
+#include <assert.h>
 #include <vector>
 #include "Maybe.h"
 
@@ -365,6 +366,7 @@ namespace rx {
 template <>
 struct schedule_on<dispatch_queue_t> {
     inline auto operator()(dispatch_queue_t q) {
+        assert(q);
         using namespace std::placeholders;
         return std::bind(dispatch_async, q, _1);
     }
@@ -374,6 +376,7 @@ struct schedule_on<dispatch_queue_t> {
 template <>
 struct schedule_on<NSOperationQueue *> {
     inline auto operator()(NSOperationQueue *q) {
+        assert(q);
         return [q](auto f){
             [q addOperationWithBlock:f];
         };
