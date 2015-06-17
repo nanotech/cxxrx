@@ -38,15 +38,40 @@ namespace rx = windberry::rx;
 
 - (void)testBind {
     bool ok = false;
+    int completed_count = 0;
 
-    rx::pure_observable(3)
+    rx::make_observable<int>([](auto s){
+        s.send_next(3);
+        s.send_next(3);
+        s.send_next(3);
+        s.send_completed();
+    })
     .bind([](int x){
-        return rx::make_observable<int>([x](auto s){
-            s.send_next(x + 10);
-        });
+        return rx::pure_observable(x + 10);
     }).subscribe([self, &ok](int x){
         ok = true;
         XCTAssertEqual(x, 13);
+    }, []{}, [&completed_count]{
+        ++completed_count;
+    });
+
+    XCTAssertTrue(ok);
+    XCTAssertEqual(completed_count, 1);
+}
+
+- (void)testBindError {
+    bool ok = false;
+
+    rx::pure_observable(3)
+    .bind([](int){
+        return rx::error_observable<int>();
+    })
+    .subscribe([self](int){
+        XCTFail();
+    }, [&ok]{
+        ok = true;
+    }, [self]{
+        //XCTFail(); // FIXME Disallow completion after error?
     });
 
     XCTAssertTrue(ok);

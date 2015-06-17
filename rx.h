@@ -95,6 +95,18 @@ struct any_observer {
 template <typename T>
 struct function_traits : public function_traits<decltype(&T::operator())> {};
 
+template <typename R, typename... Args>
+struct function_traits<R (*)(Args...)> {
+    static const size_t nargs = sizeof...(Args);
+
+    using result_type = R;
+
+    template <size_t i>
+    struct arg {
+        using type = typename std::tuple_element<i, std::tuple<Args...>>::type;
+    };
+};
+
 template <typename Class, typename R, typename... Args>
 struct function_traits<R (Class::*)(Args...) const> {
     static const size_t nargs = sizeof...(Args);
@@ -160,6 +172,23 @@ using any_observable = observable<T, std::function<void(any_observer<T>)>>;
 // Specialize to implement
 template <typename> struct schedule_on;
 
+template <typename T, typename Observer>
+struct forwarding_observer {
+    using value_type = T;
+    Observer s;
+    forwarding_observer(Observer s_) : s(s_) {}
+
+    inline void send_next(T x) const { s.send_next(x); }
+    inline void send_error() const { s.send_error(); }
+    inline void send_completed() const { s.send_completed(); }
+};
+
+template <typename T, typename Observer>
+struct uncompletable_observer : forwarding_observer<T, Observer> {
+    uncompletable_observer(Observer s_) : forwarding_observer<T, Observer>(s_) {}
+    inline void send_completed() const {}
+};
+
 template <typename T, typename Derived>
 struct observable_methods {
     using value_type = T;
@@ -171,23 +200,15 @@ struct observable_methods {
         });
     }
 
-    template <typename Observer>
-    struct forwarding_observer {
-        using value_type = T;
-        Observer s;
-        forwarding_observer(Observer s_) : s(s_) {}
-
-        inline void send_next(T x) const { s.send_next(x); }
-        inline void send_error() const { s.send_error(); }
-        inline void send_completed() const { s.send_completed(); }
-    };
-
     template <typename Observer, typename F>
-    struct bind_observer : forwarding_observer<Observer> {
+    struct bind_observer : forwarding_observer<T, Observer> {
         F f;
-        bind_observer(Observer s_, F f_) : forwarding_observer<Observer>(s_), f(f_) {}
+        bind_observer(Observer s_, F f_) : forwarding_observer<T, Observer>(s_), f(f_) {}
 
-        inline void send_next(T x) const { f(x).subscribe(this->s); }
+        inline void send_next(T x) const {
+            using U = typename decltype(f(x))::value_type;
+            f(x).subscribe(uncompletable_observer<U, Observer>{this->s});
+        }
     };
 
     template <typename F>
@@ -199,10 +220,10 @@ struct observable_methods {
     }
 
     template <typename Observer, typename Observable>
-    struct catch_to_observer : forwarding_observer<Observer> {
+    struct catch_to_observer : forwarding_observer<T, Observer> {
         Observable o;
         catch_to_observer(Observer s_, Observable o_)
-            : forwarding_observer<Observer>(s_), o(o_) {}
+            : forwarding_observer<T, Observer>(s_), o(o_) {}
 
         inline void send_error() const { o.subscribe(this->s); }
     };
@@ -385,8 +406,7 @@ struct schedule_on<NSOperationQueue *> {
 #endif
 
 template <typename T, typename Observer>
-struct throttle_observer
-    : observable_methods<T, unit>::template forwarding_observer<Observer> {
+struct throttle_observer : forwarding_observer<T, Observer> {
     std::unique_ptr<dispatch_source_t> timerp = std::make_unique<dispatch_source_t>();
     dispatch_queue_t q;
     dispatch_time_t interval, leeway;
@@ -394,10 +414,7 @@ struct throttle_observer
                       dispatch_queue_t q_,
                       dispatch_time_t i_,
                       dispatch_time_t l_)
-        : observable_methods<T, unit>::template forwarding_observer<Observer>(s_),
-          q(q_),
-          interval(i_),
-          leeway(l_) {}
+        : forwarding_observer<T, Observer>(s_), q(q_), interval(i_), leeway(l_) {}
 
     void send_next(T x) const {
         if (*timerp) {
