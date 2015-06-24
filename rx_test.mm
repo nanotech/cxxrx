@@ -51,7 +51,7 @@ namespace rx = windberry::rx;
     }).subscribe([self, &ok](int x){
         ok = true;
         XCTAssertEqual(x, 13);
-    }, []{}, [&completed_count]{
+    }, [](rx::default_error_type){}, [&completed_count]{
         ++completed_count;
     });
 
@@ -62,13 +62,14 @@ namespace rx = windberry::rx;
 - (void)testBindError {
     bool ok = false;
 
-    rx::pure_observable(3)
+    rx::pure_observable<const char *>(3)
     .bind([](int){
-        return rx::error_observable<int>();
+        return rx::error_observable<int>("boom");
     })
     .subscribe([self](int){
         XCTFail();
-    }, [&ok]{
+    }, [self, &ok](const char *e){
+        XCTAssertEqual(strcmp(e, "boom"), 0);
         ok = true;
     }, [self]{
         //XCTFail(); // FIXME Disallow completion after error?
@@ -80,15 +81,15 @@ namespace rx = windberry::rx;
 - (void)testCatchTo {
     bool ok = false;
 
-    rx::error_observable<int>()
-    .catch_to(rx::error_observable<int>())
-    .catch_to(rx::make_observable<int>([](auto s){
+    rx::error_observable<int>("boom")
+    .catch_to(rx::error_observable<int>("splat"))
+    .catch_to(rx::make_observable<int, const char *>([](auto s){
         s.send_next(7);
         s.send_completed();
     })).subscribe([self, &ok](int x){
         ok = true;
         XCTAssertEqual(x, 7);
-    }, [=]{
+    }, [=](rx::default_error_type){
         XCTFail();
     });
 
@@ -118,7 +119,7 @@ namespace rx = windberry::rx;
     s.subscribe(rx::make_observer([&expected, self](int x){
         XCTAssertEqual(x, expected);
         expected *= 2;
-    }, [self]{
+    }, [self](rx::default_error_type){
         XCTFail();
     }, [self]{
         XCTFail();
