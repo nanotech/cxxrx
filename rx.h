@@ -407,6 +407,13 @@ struct schedule_on<dispatch_queue_t> {
     }
 };
 
+template <>
+struct schedule_on<dispatch_queue_main_t> {
+    inline auto operator()(dispatch_queue_main_t q) {
+        return schedule_on<dispatch_queue_t>()(q);
+    }
+};
+
 #ifdef __OBJC__
 template <>
 struct schedule_on<NSOperationQueue *> {
