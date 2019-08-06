@@ -146,7 +146,7 @@ inline auto make_observer(F &&f, G &&g, H &&h)
 }
 
 template <typename T, typename E, typename F>
-class observable;
+struct observable;
 
 template <typename T, typename E = default_error_type, typename F>
 inline auto make_observable(F &&f) -> observable<T, E, F> {
