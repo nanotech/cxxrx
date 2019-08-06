@@ -1,7 +1,7 @@
 #import <Cocoa/Cocoa.h>
 #import <XCTest/XCTest.h>
 
-#import "rx.h"
+#import "rx_dispatch.h"
 namespace rx = windberry::rx;
 
 @interface rx_test : XCTestCase
