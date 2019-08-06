@@ -64,7 +64,7 @@ namespace rx = windberry::rx;
         ok = true;
         XCTAssertEqual(x, 7);
     }, [=]{
-        XCTAssert(0);
+        XCTFail();
     });
 
     XCTAssertTrue(ok);
@@ -82,6 +82,24 @@ namespace rx = windberry::rx;
     });
 
     [self waitForExpectationsWithTimeout:0.1 handler:nil];
+}
+
+- (void)testSubject {
+    rx::replay_subject<int> s;
+    s.send_next(2);
+    s.send_next(4);
+
+    int expected = 2;
+    s.subscribe(rx::make_observer([&expected, self](int x){
+        XCTAssertEqual(x, expected);
+        expected *= 2;
+    }, [self]{
+        XCTFail();
+    }, [self]{
+        XCTFail();
+    }));
+
+    s.send_next(8);
 }
 
 @end

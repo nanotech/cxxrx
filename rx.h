@@ -4,6 +4,9 @@
 #include <memory>
 #include <utility>
 
+#include <vector>
+#include "Maybe.h"
+
 namespace windberry {
 namespace rx {
 
@@ -129,7 +132,7 @@ class observable;
 
 template <typename T, typename F>
 inline auto make_observable(F &&f) -> observable<T, F> {
-    return {std::forward<F>(f)};
+    return observable<T, F>{std::forward<F>(f)};
 }
 
 template <typename T>
@@ -156,30 +159,8 @@ using any_observable = observable<T, std::function<void(any_observer<T>)>>;
 // Specialize to implement
 template <typename> struct schedule_on;
 
-template <typename T, typename DoSub>
-struct observable {
-    using value_type = T;
-
-    DoSub do_subscribe;
-
-    observable() : do_subscribe([](auto){}) {}
-
-    template <typename DoSubscribe,
-              typename = disable_if_same_or_derived<observable, DoSubscribe>>
-    observable(DoSubscribe &&o)
-        : do_subscribe(std::forward<DoSubscribe>(o)) {}
-
-    template <typename Observer, typename U = typename std::decay_t<Observer>::value_type>
-    void subscribe(Observer &&o) const {
-        //printf("observer size: %zu [%s]\n", sizeof(typename std::decay_t<Observer>), typeid(o).name());
-        do_subscribe(std::forward<Observer>(o));
-    }
-
-    template <typename... Args>
-    void subscribe(Args &&... args) const {
-        subscribe(make_observer(std::forward<Args>(args)...));
-    }
-
+template <typename T, typename Derived>
+struct observable_methods {
     template <typename F>
     auto map(F &&f) {
         return bind([f](T x){
@@ -209,7 +190,7 @@ struct observable {
     template <typename F>
     auto bind(F &&f) {
         using U = typename result_type<F>::value_type;
-        return make_observable<U>([f, me = *this](auto s){
+        return make_observable<U>([f, me = *This()](auto s){
             me.subscribe(bind_observer<decltype(s), F>{s,f});
         });
     }
@@ -227,7 +208,7 @@ struct observable {
     auto catch_to(Observable o) {
         using U = typename Observable::value_type;
         static_assert(std::is_same<T, U>(), "");
-        return make_observable<U>([o, me = *this](auto s) {
+        return make_observable<U>([o, me = *This()](auto s) {
             me.subscribe(catch_to_observer<decltype(s), Observable>{s, o});
         });
     }
@@ -244,17 +225,17 @@ struct observable {
             inline void send_error()     const { f([s = s]{ s.send_error(); }); }
             inline void send_completed() const { f([s = s]{ s.send_completed(); }); }
         };
-        return make_observable<T>([f, me = *this](auto s){
+        return make_observable<T>([f, me = *This()](auto s){
             me.subscribe(deliver_observer{f, s});
         });
     }
 
     template <typename F>
     auto subscribe_with(F f) {
-        auto g = do_subscribe;
-        return make_observable<T>([f, g](auto s){
-            f([s, g]{
-                g(s);
+        auto me = *This();
+        return make_observable<T>([f, me](auto s){
+            f([s, me]{
+                me.subscribe(s);
             });
         });
     }
@@ -269,14 +250,105 @@ struct observable {
         return subscribe_with(schedule_on<Q>{}(q));
     }
 
-    auto any() const& -> any_observable<T> {
-        return any_observable<T>(do_subscribe);
+    auto any() -> any_observable<T> {
+        return any_observable<T>([me = *This()](auto s){
+            me.subscribe(s);
+        });
     }
 
-    auto any() && -> any_observable<T> {
-        return any_observable<T>(std::move(do_subscribe));
+private:
+    // Use the correct pointer type when copying to prevent slicing.
+    inline Derived* This() { return static_cast<Derived *>(this); }
+
+    template <typename... Args>
+    inline void subscribe(Args &&... args) const {
+        static_cast<const Derived *>(this)->subscribe(std::forward<Args>(args)...);
     }
 };
+
+template <typename T, typename DoSub>
+struct observable : observable_methods<T, observable<T, DoSub>> {
+    using value_type = T;
+
+    DoSub do_subscribe;
+
+    observable() : do_subscribe([](auto){}) {}
+
+    template <typename DoSubscribe,
+              typename = disable_if_same_or_derived<observable, DoSubscribe>>
+    explicit observable(DoSubscribe &&o)
+        : do_subscribe(std::forward<DoSubscribe>(o)) {}
+
+    template <typename Observer, typename U = typename std::decay_t<Observer>::value_type>
+    void subscribe(Observer &&o) const {
+        //printf("observer size: %zu [%s]\n", sizeof(typename std::decay_t<Observer>), typeid(o).name());
+        do_subscribe(std::forward<Observer>(o));
+    }
+
+    template <typename... Args>
+    void subscribe(Args &&... args) const {
+        subscribe(make_observer(std::forward<Args>(args)...));
+    }
+};
+
+template <typename T>
+struct replay_subject : observable_methods<T, replay_subject<T>> {
+    replay_subject() : st(std::make_shared<state>()) {}
+
+    void subscribe(const any_observer<T> &original) const {
+        st->observers.push_back(original);
+        auto &o = st->observers.back();
+        for (auto &e : st->events) {
+            e.send(o);
+        }
+    }
+
+    void send_next(T x)   const { st->add_event(event{event_type::next, Just(W{x})}); }
+    void send_error()     const { st->add_event(event{event_type::error}); }
+    void send_completed() const { st->add_event(event{event_type::completed}); }
+
+  private:
+    // Wrap Objective-C objects to avoid hitting ARC restrictions on putting them
+    // directly in the Maybe union.
+    struct W { T unwrap; };
+
+    enum class event_type : char { next, error, completed };
+    struct event {
+        Maybe<W> value;
+        event_type type;
+
+        explicit event(event_type t, Maybe<W> x = Nothing<W>()) : value(x), type(t) {}
+
+        void send(any_observer<T> &o) {
+            switch (type) {
+                case event_type::next:      o.send_next((*value.orNull()).unwrap); break;
+                case event_type::error:     o.send_error(); break;
+                case event_type::completed: o.send_completed(); break;
+            }
+        }
+    };
+
+    struct state {
+        std::vector<event> events;
+        std::vector<any_observer<T>> observers;
+
+        // final when error or complete; next is not final
+        event_type final_event_type = event_type::next;
+
+        void add_event(event &&e) {
+            assert(final_event_type == event_type::next);
+            final_event_type = e.type;
+            events.emplace_back(std::move(e));
+            auto &ev = events.back();
+            for (auto &o : observers) {
+                ev.send(o);
+            }
+        }
+    };
+    std::shared_ptr<state> st;
+};
+
+struct unit {};
 
 }
 }
