@@ -1,4 +1,8 @@
 #include "rx.h"
+
+#include <stdio.h>
+#include <string.h>
+
 namespace rx = windberry::rx;
 
 static void assert_eq(int a, int b) {
